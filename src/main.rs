@@ -1,26 +1,10 @@
-use rust_decimal::Decimal;
-use serde::Deserialize;
+use ledger::Ledger;
 use std::env;
 use std::io::{Error, ErrorKind};
+use types::Transaction;
 
-#[derive(Debug, Deserialize)]
-struct Transaction {
-    #[serde(alias = "type")]
-    t_type: TransactionType,
-    client: u16,
-    tx: u32,
-    amount: Option<Decimal>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "lowercase")]
-enum TransactionType {
-    Deposit,
-    Withdrawal,
-    Dispute,
-    Resolve,
-    Chargeback,
-}
+mod ledger;
+mod types;
 
 fn main() -> Result<(), Error> {
     let args: Vec<String> = env::args().collect();
@@ -31,14 +15,20 @@ fn main() -> Result<(), Error> {
         ));
     }
 
+    let ledger = Ledger::default();
+
     let mut reader = csv::ReaderBuilder::new()
         .trim(csv::Trim::All)
         .from_path(args[1].clone())?;
 
     for row in reader.deserialize() {
         let transaction: Transaction = row?;
-        println!("{:?}", transaction);
+        if let Err(e) = ledger.update(transaction) {
+            eprintln!("{:?}", e);
+        }
     }
+
+    // TODO print client accounts
 
     Ok(())
 }
