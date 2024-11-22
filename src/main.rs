@@ -1,7 +1,7 @@
 use ledger::Ledger;
 use std::env;
 use std::io::{Error, ErrorKind};
-use types::Transaction;
+use types::{Transaction, TransactionEntry};
 
 mod ledger;
 mod types;
@@ -15,16 +15,21 @@ fn main() -> Result<(), Error> {
         ));
     }
 
-    let ledger = Ledger::default();
+    let mut ledger = Ledger::default();
 
     let mut reader = csv::ReaderBuilder::new()
         .trim(csv::Trim::All)
         .from_path(args[1].clone())?;
 
-    for row in reader.deserialize() {
-        let transaction: Transaction = row?;
-        if let Err(e) = ledger.update(transaction) {
-            eprintln!("{:?}", e);
+    for entry in reader.deserialize() {
+        let transaction_entry: TransactionEntry = entry?;
+        match Transaction::try_from(transaction_entry) {
+            Ok(transaction) => {
+                if let Err(e) = ledger.update(transaction) {
+                    eprintln!("{:?}", e);
+                }
+            }
+            Err(e) => eprintln!("{:?}", e),
         }
     }
 
