@@ -59,6 +59,7 @@ pub struct Deposit {
 
 pub struct Withdrawal {
     pub client: ClientId,
+    #[allow(dead_code)]
     pub tx: TransactionId,
     pub amount: Amount,
 }

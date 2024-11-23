@@ -138,20 +138,11 @@ impl Account {
     }
 }
 
+#[derive(Default)]
 pub struct Ledger {
     clients: HashMap<ClientId, Account>,
     deposits: HashMap<(ClientId, TransactionId), Amount>,
     disputes: HashSet<(ClientId, TransactionId)>,
-}
-
-impl Default for Ledger {
-    fn default() -> Self {
-        Self {
-            clients: HashMap::new(),
-            deposits: HashMap::new(),
-            disputes: HashSet::new(),
-        }
-    }
 }
 
 impl Ledger {
@@ -192,7 +183,7 @@ impl Ledger {
         // Reduce the client's available funds, failing if the client does not exist.
         self.clients
             .get_mut(&client)
-            .ok_or_else(|| TransactionError::ClientDoesNotExist { client_id: client })?
+            .ok_or(TransactionError::ClientDoesNotExist { client_id: client })?
             .withdrawal(amount)?;
         Ok(())
     }
@@ -213,7 +204,7 @@ impl Ledger {
         // Update the client's account, moving funds from available to held.
         self.clients
             .get_mut(&client)
-            .ok_or_else(|| TransactionError::ClientDoesNotExist { client_id: client })?
+            .ok_or(TransactionError::ClientDoesNotExist { client_id: client })?
             .dispute(*amount)?;
 
         // Track the dispute
@@ -226,7 +217,7 @@ impl Ledger {
         // Confirm a dispute exists
         self.disputes
             .get(&(client, tx))
-            .ok_or_else(|| TransactionError::ResolveFailed {
+            .ok_or(TransactionError::ResolveFailed {
                 client_id: client,
                 transaction_id: tx,
             })?;
@@ -245,7 +236,7 @@ impl Ledger {
         // Update the client's account
         self.clients
             .get_mut(&client)
-            .ok_or_else(|| TransactionError::ClientDoesNotExist { client_id: client })?
+            .ok_or(TransactionError::ClientDoesNotExist { client_id: client })?
             .resolve(*amount)?;
 
         // Clear the dispute
@@ -261,7 +252,7 @@ impl Ledger {
         // Confirm a dispute exists
         self.disputes
             .get(&(client, tx))
-            .ok_or_else(|| TransactionError::ChargebackFailed {
+            .ok_or(TransactionError::ChargebackFailed {
                 client_id: client,
                 transaction_id: tx,
             })?;
@@ -280,7 +271,7 @@ impl Ledger {
         // Update the client's account
         self.clients
             .get_mut(&client)
-            .ok_or_else(|| TransactionError::ClientDoesNotExist { client_id: client })?
+            .ok_or(TransactionError::ClientDoesNotExist { client_id: client })?
             .chargeback(*amount)?;
 
         // Clear the dispute
