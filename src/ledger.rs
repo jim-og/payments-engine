@@ -112,6 +112,8 @@ impl Account {
             });
         }
 
+        // It is assumed that a client always has sufficient held funds for the amount to be made
+        // available.
         self.available.0 += amount.0;
         self.held.0 -= amount.0;
         Ok(())
@@ -128,6 +130,8 @@ impl Account {
             });
         }
 
+        // It is assumed that a client always has sufficient held funds for the amount to be charged
+        // back.
         self.held.0 -= amount.0;
         self.locked = true;
         Ok(())
@@ -151,105 +155,136 @@ impl Default for Ledger {
 }
 
 impl Ledger {
+    /// Update the ledger
     pub fn update(&mut self, transaction: Transaction) -> Result<(), TransactionError> {
         match transaction {
-            Transaction::Deposit(Deposit { client, tx, amount }) => {
-                self.clients
-                    .entry(client)
-                    .or_insert(Account::new(client))
-                    .deposit(amount)?;
-                self.deposits.insert((client, tx), amount);
-            }
-            Transaction::Withdrawal(Withdrawal {
-                client,
-                tx: _,
-                amount,
-            }) => {
-                self.clients
-                    .get_mut(&client)
-                    .ok_or_else(|| TransactionError::ClientDoesNotExist { client_id: client })?
-                    .withdrawal(amount)?;
-            }
-            Transaction::Dispute(Dispute { client, tx }) => {
-                // Find the transaction amount
-                let amount = match self.deposits.get(&(client, tx)) {
-                    Some(deposit) => deposit,
-                    None => {
-                        return Err(TransactionError::DisputeFailed {
-                            client_id: client,
-                            transaction_id: tx,
-                        })
-                    }
-                };
-
-                // Update the client's account
-                self.clients
-                    .get_mut(&client)
-                    .ok_or_else(|| TransactionError::ClientDoesNotExist { client_id: client })?
-                    .dispute(*amount)?;
-
-                // Track the dispute
-                self.disputes.insert((client, tx));
-            }
-            Transaction::Resolve(Resolve { client, tx }) => {
-                // Confirm a dispute exists
-                self.disputes.get(&(client, tx)).ok_or_else(|| {
-                    TransactionError::ResolveFailed {
-                        client_id: client,
-                        transaction_id: tx,
-                    }
-                })?;
-
-                // Find the transaction amount
-                let amount = match self.deposits.get(&(client, tx)) {
-                    Some(deposit) => deposit,
-                    None => {
-                        return Err(TransactionError::ResolveFailed {
-                            client_id: client,
-                            transaction_id: tx,
-                        })
-                    }
-                };
-
-                // Update the client's account
-                self.clients
-                    .get_mut(&client)
-                    .ok_or_else(|| TransactionError::ClientDoesNotExist { client_id: client })?
-                    .resolve(*amount)?;
-
-                // Clear the dispute
-                self.disputes.remove(&(client, tx));
-            }
-            Transaction::Chargeback(Chargeback { client, tx }) => {
-                // Confirm a dispute exists
-                self.disputes.get(&(client, tx)).ok_or_else(|| {
-                    TransactionError::ChargebackFailed {
-                        client_id: client,
-                        transaction_id: tx,
-                    }
-                })?;
-
-                // Find the transaction amount
-                let amount = match self.deposits.get(&(client, tx)) {
-                    Some(deposit) => deposit,
-                    None => {
-                        return Err(TransactionError::ChargebackFailed {
-                            client_id: client,
-                            transaction_id: tx,
-                        })
-                    }
-                };
-
-                // Update the client's account
-                self.clients
-                    .get_mut(&client)
-                    .ok_or_else(|| TransactionError::ClientDoesNotExist { client_id: client })?
-                    .chargeback(*amount)?;
-
-                // Clear the dispute
-                self.disputes.remove(&(client, tx));
-            }
+            Transaction::Deposit(deposit) => self.deposit(deposit)?,
+            Transaction::Withdrawal(withdrawal) => self.withdrawal(withdrawal)?,
+            Transaction::Dispute(dispute) => self.dispute(dispute)?,
+            Transaction::Resolve(resolve) => self.resolve(resolve)?,
+            Transaction::Chargeback(chargeback) => self.chargeback(chargeback)?,
         }
+        Ok(())
+    }
+
+    /// Deposit an amount into a client's account.
+    fn deposit(&mut self, Deposit { client, tx, amount }: Deposit) -> Result<(), TransactionError> {
+        // Increase the client's available funds, creating a new client if it does not already exist.
+        self.clients
+            .entry(client)
+            .or_insert(Account::new(client))
+            .deposit(amount)?;
+
+        // Track this deposit so that it can later be disputed.
+        self.deposits.insert((client, tx), amount);
+        Ok(())
+    }
+
+    /// Withdraw an amount from a client's account. Fails if the client does not exist.
+    fn withdrawal(
+        &mut self,
+        Withdrawal {
+            client,
+            tx: _,
+            amount,
+        }: Withdrawal,
+    ) -> Result<(), TransactionError> {
+        // Reduce the client's available funds, failing if the client does not exist.
+        self.clients
+            .get_mut(&client)
+            .ok_or_else(|| TransactionError::ClientDoesNotExist { client_id: client })?
+            .withdrawal(amount)?;
+        Ok(())
+    }
+
+    /// Dispute a client's deposit transaction. Fails if the client does not exist.
+    fn dispute(&mut self, Dispute { client, tx }: Dispute) -> Result<(), TransactionError> {
+        // Find the transaction amount
+        let amount = match self.deposits.get(&(client, tx)) {
+            Some(deposit) => deposit,
+            None => {
+                return Err(TransactionError::DisputeFailed {
+                    client_id: client,
+                    transaction_id: tx,
+                })
+            }
+        };
+
+        // Update the client's account, moving funds from available to held.
+        self.clients
+            .get_mut(&client)
+            .ok_or_else(|| TransactionError::ClientDoesNotExist { client_id: client })?
+            .dispute(*amount)?;
+
+        // Track the dispute
+        self.disputes.insert((client, tx));
+        Ok(())
+    }
+
+    /// Resolve a client's disputed deposit. Fails if the client does not exist.
+    fn resolve(&mut self, Resolve { client, tx }: Resolve) -> Result<(), TransactionError> {
+        // Confirm a dispute exists
+        self.disputes
+            .get(&(client, tx))
+            .ok_or_else(|| TransactionError::ResolveFailed {
+                client_id: client,
+                transaction_id: tx,
+            })?;
+
+        // Find the transaction amount
+        let amount = match self.deposits.get(&(client, tx)) {
+            Some(deposit) => deposit,
+            None => {
+                return Err(TransactionError::ResolveFailed {
+                    client_id: client,
+                    transaction_id: tx,
+                })
+            }
+        };
+
+        // Update the client's account
+        self.clients
+            .get_mut(&client)
+            .ok_or_else(|| TransactionError::ClientDoesNotExist { client_id: client })?
+            .resolve(*amount)?;
+
+        // Clear the dispute
+        self.disputes.remove(&(client, tx));
+        Ok(())
+    }
+
+    /// Chargeback a client's disputed deposit. Fails if the client does not exist.
+    fn chargeback(
+        &mut self,
+        Chargeback { client, tx }: Chargeback,
+    ) -> Result<(), TransactionError> {
+        // Confirm a dispute exists
+        self.disputes
+            .get(&(client, tx))
+            .ok_or_else(|| TransactionError::ChargebackFailed {
+                client_id: client,
+                transaction_id: tx,
+            })?;
+
+        // Find the transaction amount
+        let amount = match self.deposits.get(&(client, tx)) {
+            Some(deposit) => deposit,
+            None => {
+                return Err(TransactionError::ChargebackFailed {
+                    client_id: client,
+                    transaction_id: tx,
+                })
+            }
+        };
+
+        // Update the client's account
+        self.clients
+            .get_mut(&client)
+            .ok_or_else(|| TransactionError::ClientDoesNotExist { client_id: client })?
+            .chargeback(*amount)?;
+
+        // Clear the dispute
+        self.disputes.remove(&(client, tx));
         Ok(())
     }
 }
