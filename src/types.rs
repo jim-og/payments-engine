@@ -3,7 +3,7 @@ use std::io::{Error, ErrorKind};
 use rust_decimal::Decimal;
 use serde::Deserialize;
 
-#[derive(Debug, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Deserialize, Copy, Clone, PartialEq)]
 pub struct Amount(pub Decimal);
 
 impl From<i32> for Amount {

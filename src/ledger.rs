@@ -1,4 +1,4 @@
-use crate::types::{Amount, ClientId, Transaction, TransactionId};
+use crate::types::{Amount, ClientId, Deposit, Transaction, TransactionId};
 use std::collections::{HashMap, HashSet};
 use thiserror::Error;
 
@@ -30,26 +30,32 @@ pub enum PaymentError {
 }
 
 struct Account {
+    client_id: ClientId,
     available: Amount,
     held: Amount,
     locked: bool,
 }
 
-impl Default for Account {
-    fn default() -> Self {
-        Self {
-            available: Amount(0.into()),
-            held: Amount(0.into()),
+impl Account {
+    fn new(client_id: ClientId) -> Self {
+        Account {
+            client_id,
+            available: Amount::from(0),
+            held: Amount::from(0),
             locked: false,
         }
     }
-}
 
-impl Account {
-    fn deposit(&self, amount: Amount) {
+    fn deposit(&mut self, amount: Amount) -> Result<(), PaymentError> {
         // A deposit is a credit to the client's asset account, meaning it should increase the available and
         // total funds of the client account.
-        todo!()
+        if self.locked {
+            return Err(PaymentError::ClientAccountLocked {
+                client_id: self.client_id,
+            });
+        }
+        self.available.0 += amount.0;
+        Ok(())
     }
 
     fn withdrawal(&self, amount: Amount) -> Result<(), PaymentError> {
@@ -88,7 +94,7 @@ impl Account {
 
 pub struct Ledger {
     clients: HashMap<ClientId, Account>,
-    transactions: HashMap<(ClientId, TransactionId), Transaction>,
+    deposits: HashMap<(ClientId, TransactionId), Amount>,
     disputes: HashSet<(ClientId, TransactionId)>,
 }
 
@@ -96,7 +102,7 @@ impl Default for Ledger {
     fn default() -> Self {
         Self {
             clients: HashMap::new(),
-            transactions: HashMap::new(),
+            deposits: HashMap::new(),
             disputes: HashSet::new(),
         }
     }
@@ -105,12 +111,19 @@ impl Default for Ledger {
 impl Ledger {
     pub fn update(&mut self, transaction: Transaction) -> Result<(), PaymentError> {
         match transaction {
-            Transaction::Deposit(deposit) => todo!(),
+            Transaction::Deposit(Deposit { client, tx, amount }) => {
+                self.clients
+                    .entry(client)
+                    .or_insert(Account::new(client))
+                    .deposit(amount)?;
+                self.deposits.insert((client, tx), amount);
+            }
             Transaction::Withdrawal(withdrawal) => todo!(),
             Transaction::Dispute(dispute) => todo!(),
             Transaction::Resolve(resolve) => todo!(),
             Transaction::Chargeback(chargeback) => todo!(),
         }
+        Ok(())
     }
 }
 
@@ -139,6 +152,7 @@ mod tests {
             available,
             held,
             locked,
+            ..
         } = ledger
             .clients
             .get(&client_id)
@@ -150,9 +164,7 @@ mod tests {
         );
 
         // Assert that the transaction has been stored.
-        assert!(ledger
-            .transactions
-            .contains_key(&(client_id, transaction_id)));
+        assert!(ledger.deposits.contains_key(&(client_id, transaction_id)));
 
         // Assert that there are no disputes
         assert!(ledger.disputes.is_empty());
@@ -187,6 +199,7 @@ mod tests {
             available,
             held,
             locked,
+            ..
         } = ledger
             .clients
             .get(&client_id)
@@ -198,7 +211,7 @@ mod tests {
         );
 
         // Assert that the deposit has been stored.
-        assert!(ledger.transactions.contains_key(&(client_id, deposit_id)));
+        assert!(ledger.deposits.contains_key(&(client_id, deposit_id)));
 
         // Assert that there are no disputes
         assert!(ledger.disputes.is_empty());
@@ -242,6 +255,7 @@ mod tests {
             available,
             held,
             locked,
+            ..
         } = ledger
             .clients
             .get(&client_id)
@@ -253,7 +267,7 @@ mod tests {
         );
 
         // Assert that the deposit has been stored.
-        assert!(ledger.transactions.contains_key(&(client_id, deposit_id)));
+        assert!(ledger.deposits.contains_key(&(client_id, deposit_id)));
 
         // Assert that there are no disputes
         assert!(ledger.disputes.is_empty());
@@ -294,6 +308,7 @@ mod tests {
             available,
             held,
             locked,
+            ..
         } = ledger
             .clients
             .get(&client_id)
@@ -344,6 +359,7 @@ mod tests {
             available,
             held,
             locked,
+            ..
         } = ledger
             .clients
             .get(&client_id)
@@ -397,6 +413,7 @@ mod tests {
             available,
             held,
             locked,
+            ..
         } = ledger
             .clients
             .get(&client_id)
@@ -487,6 +504,7 @@ mod tests {
             available,
             held,
             locked,
+            ..
         } = ledger
             .clients
             .get(&client_id)
