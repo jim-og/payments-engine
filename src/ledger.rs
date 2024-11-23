@@ -166,8 +166,8 @@ impl Ledger {
                 amount,
             }) => {
                 self.clients
-                    .entry(client)
-                    .or_insert(Account::new(client))
+                    .get_mut(&client)
+                    .ok_or_else(|| TransactionError::ClientDoesNotExist { client_id: client })?
                     .withdrawal(amount)?;
             }
             Transaction::Dispute(Dispute { client, tx }) => {
@@ -184,8 +184,8 @@ impl Ledger {
 
                 // Update the client's account
                 self.clients
-                    .entry(client)
-                    .or_insert(Account::new(client))
+                    .get_mut(&client)
+                    .ok_or_else(|| TransactionError::ClientDoesNotExist { client_id: client })?
                     .dispute(*amount)?;
 
                 // Track the dispute
@@ -213,8 +213,8 @@ impl Ledger {
 
                 // Update the client's account
                 self.clients
-                    .entry(client)
-                    .or_insert(Account::new(client))
+                    .get_mut(&client)
+                    .ok_or_else(|| TransactionError::ClientDoesNotExist { client_id: client })?
                     .resolve(*amount)?;
 
                 // Clear the dispute
@@ -242,8 +242,8 @@ impl Ledger {
 
                 // Update the client's account
                 self.clients
-                    .entry(client)
-                    .or_insert(Account::new(client))
+                    .get_mut(&client)
+                    .ok_or_else(|| TransactionError::ClientDoesNotExist { client_id: client })?
                     .chargeback(*amount)?;
 
                 // Clear the dispute
