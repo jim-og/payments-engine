@@ -3,14 +3,26 @@ use std::io::{Error, ErrorKind};
 use rust_decimal::Decimal;
 use serde::Deserialize;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone, PartialEq)]
 pub struct Amount(pub Decimal);
 
-#[derive(Debug, Deserialize, Copy, Clone, Eq, Hash, PartialEq)]
-pub struct ClientId(u16);
+impl From<i32> for Amount {
+    fn from(value: i32) -> Self {
+        Amount(Decimal::from(value))
+    }
+}
 
-#[derive(Debug, Deserialize)]
-pub struct TransactionId(u32);
+impl From<Decimal> for Amount {
+    fn from(value: Decimal) -> Self {
+        Amount(value)
+    }
+}
+
+#[derive(Debug, Deserialize, Copy, Clone, Eq, Hash, PartialEq)]
+pub struct ClientId(pub u16);
+
+#[derive(Debug, Deserialize, Copy, Clone, Eq, Hash, PartialEq)]
+pub struct TransactionId(pub u32);
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -40,30 +52,30 @@ pub enum Transaction {
 }
 
 pub struct Deposit {
-    client: ClientId,
-    tx: TransactionId,
-    amount: Amount,
+    pub client: ClientId,
+    pub tx: TransactionId,
+    pub amount: Amount,
 }
 
 pub struct Withdrawal {
-    client: ClientId,
-    tx: TransactionId,
-    amount: Amount,
+    pub client: ClientId,
+    pub tx: TransactionId,
+    pub amount: Amount,
 }
 
 pub struct Dispute {
-    client: ClientId,
-    tx: TransactionId,
+    pub client: ClientId,
+    pub tx: TransactionId,
 }
 
 pub struct Resolve {
-    client: ClientId,
-    tx: TransactionId,
+    pub client: ClientId,
+    pub tx: TransactionId,
 }
 
 pub struct Chargeback {
-    client: ClientId,
-    tx: TransactionId,
+    pub client: ClientId,
+    pub tx: TransactionId,
 }
 
 impl TryFrom<TransactionEntry> for Transaction {
