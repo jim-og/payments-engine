@@ -1,4 +1,4 @@
-use crate::types::{Amount, ClientId, Deposit, Transaction, TransactionId, Withdrawal};
+use crate::types::{Amount, ClientId, Deposit, Dispute, Transaction, TransactionId, Withdrawal};
 use std::collections::{HashMap, HashSet};
 use thiserror::Error;
 
@@ -83,8 +83,17 @@ impl Account {
     /// The transaction shouldn't be reversed yet but the associated funds should be held. This means
     /// that the clients available funds should decrease by the amount disputed, their held funds should
     /// increase by the amount disputed, while their total funds should remain the same.
-    fn dispute(&self, amount: Amount) -> Result<(), PaymentError> {
-        todo!()
+    fn dispute(&mut self, amount: Amount) -> Result<(), PaymentError> {
+        if self.locked {
+            return Err(PaymentError::ClientAccountLocked {
+                client_id: self.client_id,
+            });
+        }
+        // It is assumed that a client always has a sufficient available amount for a disputed amount to
+        // be held.
+        self.available.0 -= amount.0;
+        self.held.0 += amount.0;
+        Ok(())
     }
 
     /// A resolve represents a resolution to a dispute, releasing the associated held funds. Funds that
@@ -140,7 +149,27 @@ impl Ledger {
                     .or_insert(Account::new(client))
                     .withdrawal(amount)?;
             }
-            Transaction::Dispute(dispute) => todo!(),
+            Transaction::Dispute(Dispute { client, tx }) => {
+                // Find the transaction amount
+                let amount = match self.deposits.get(&(client, tx)) {
+                    Some(deposit) => deposit,
+                    None => {
+                        return Err(PaymentError::DisputeFailed {
+                            client_id: client,
+                            transaction_id: tx,
+                        })
+                    }
+                };
+
+                // Update the client account funds
+                self.clients
+                    .entry(client)
+                    .or_insert(Account::new(client))
+                    .dispute(*amount)?;
+
+                // Track the dispute
+                self.disputes.insert((client, tx));
+            }
             Transaction::Resolve(resolve) => todo!(),
             Transaction::Chargeback(chargeback) => todo!(),
         }
