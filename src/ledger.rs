@@ -1,4 +1,4 @@
-use crate::types::{Amount, ClientId, Deposit, Transaction, TransactionId};
+use crate::types::{Amount, ClientId, Deposit, Transaction, TransactionId, Withdrawal};
 use std::collections::{HashMap, HashSet};
 use thiserror::Error;
 
@@ -46,9 +46,9 @@ impl Account {
         }
     }
 
+    /// A deposit is a credit to the client's asset account, meaning it should increase the available and
+    /// total funds of the client account.
     fn deposit(&mut self, amount: Amount) -> Result<(), PaymentError> {
-        // A deposit is a credit to the client's asset account, meaning it should increase the available and
-        // total funds of the client account.
         if self.locked {
             return Err(PaymentError::ClientAccountLocked {
                 client_id: self.client_id,
@@ -58,36 +58,48 @@ impl Account {
         Ok(())
     }
 
-    fn withdrawal(&self, amount: Amount) -> Result<(), PaymentError> {
-        // A withdraw is a debit to the client's asset account, meaning it should decrease the available and
-        // total funds of the client account.
-
-        // If a client does not have sufficient available funds the withdrawal should fail and the total amount
-        // of funds should not change
-        todo!()
+    /// A withdraw is a debit to the client's asset account, meaning it should decrease the available and
+    /// total funds of the client account. If a client does not have sufficient available funds the withdrawal
+    /// should fail and the total amount of funds should not change.
+    fn withdrawal(&mut self, amount: Amount) -> Result<(), PaymentError> {
+        if self.locked {
+            return Err(PaymentError::ClientAccountLocked {
+                client_id: self.client_id,
+            });
+        }
+        if self.available.0 >= amount.0 {
+            self.available.0 -= amount.0;
+            Ok(())
+        } else {
+            Err(PaymentError::WithdrawalInsufficientFunds {
+                client_id: self.client_id,
+                available: self.available,
+                requested: amount,
+            })
+        }
     }
 
+    /// A dispute represents a client's claim that a transaction was erroneous and should be reversed.
+    /// The transaction shouldn't be reversed yet but the associated funds should be held. This means
+    /// that the clients available funds should decrease by the amount disputed, their held funds should
+    /// increase by the amount disputed, while their total funds should remain the same.
     fn dispute(&self, amount: Amount) -> Result<(), PaymentError> {
-        // A dispute represents a client's claim that a transaction was erroneous and should be reversed.
-        // The transaction shouldn't be reversed yet but the associated funds should be held. This means
-        // that the clients available funds should decrease by the amount disputed, their held funds should
-        // increase by the amount disputed, while their total funds should remain the same.
         todo!()
     }
 
+    /// A resolve represents a resolution to a dispute, releasing the associated held funds. Funds that
+    /// were previously disputed are no longer disputed. This means that the clients held funds should
+    /// decrease by the amount no longer disputed, their available funds should increase by the amount
+    /// no longer disputed, and their total funds should remain the same.
     fn resolve(&self, amount: Amount) -> Result<(), PaymentError> {
-        // A resolve represents a resolution to a dispute, releasing the associated held funds. Funds that
-        // were previously disputed are no longer disputed. This means that the clients held funds should
-        // decrease by the amount no longer disputed, their available funds should increase by the amount
-        // no longer disputed, and their total funds should remain the same.
         todo!()
     }
 
+    /// A chargeback is the final state of a dispute and represents the client reversing a transaction.
+    /// Funds that were held have now been withdrawn. This means that the clients held funds and total
+    /// funds should decrease by the amount previously disputed. If a chargeback occurs the client's
+    /// account should be immediately frozen.
     fn chargeback(&self, amount: Amount) -> Result<(), PaymentError> {
-        // A chargeback is the final state of a dispute and represents the client reversing a transaction.
-        // Funds that were held have now been withdrawn. This means that the clients held funds and total
-        // funds should decrease by the amount previously disputed. If a chargeback occurs the client's
-        // account should be immediately frozen.
         todo!()
     }
 }
@@ -118,7 +130,16 @@ impl Ledger {
                     .deposit(amount)?;
                 self.deposits.insert((client, tx), amount);
             }
-            Transaction::Withdrawal(withdrawal) => todo!(),
+            Transaction::Withdrawal(Withdrawal {
+                client,
+                tx: _,
+                amount,
+            }) => {
+                self.clients
+                    .entry(client)
+                    .or_insert(Account::new(client))
+                    .withdrawal(amount)?;
+            }
             Transaction::Dispute(dispute) => todo!(),
             Transaction::Resolve(resolve) => todo!(),
             Transaction::Chargeback(chargeback) => todo!(),
