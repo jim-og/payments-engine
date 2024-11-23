@@ -1,11 +1,13 @@
 use crate::types::{
-    Amount, ClientId, Deposit, Dispute, Resolve, Transaction, TransactionId, Withdrawal,
+    Amount, Chargeback, ClientId, Deposit, Dispute, Resolve, Transaction, TransactionId, Withdrawal,
 };
 use std::collections::{HashMap, HashSet};
 use thiserror::Error;
 
 #[derive(Error, Debug, PartialEq)]
-pub enum PaymentError {
+pub enum TransactionError {
+    #[error("client {client_id:?} does not exist, transaction failed")]
+    ClientDoesNotExist { client_id: ClientId },
     #[error("client {client_id:?} has insufficient funds to withdraw {requested:?} (available {available:?})")]
     WithdrawalInsufficientFunds {
         client_id: ClientId,
@@ -50,9 +52,9 @@ impl Account {
 
     /// A deposit is a credit to the client's asset account, meaning it should increase the available and
     /// total funds of the client account.
-    fn deposit(&mut self, amount: Amount) -> Result<(), PaymentError> {
+    fn deposit(&mut self, amount: Amount) -> Result<(), TransactionError> {
         if self.locked {
-            return Err(PaymentError::ClientAccountLocked {
+            return Err(TransactionError::ClientAccountLocked {
                 client_id: self.client_id,
             });
         }
@@ -63,9 +65,9 @@ impl Account {
     /// A withdraw is a debit to the client's asset account, meaning it should decrease the available and
     /// total funds of the client account. If a client does not have sufficient available funds the withdrawal
     /// should fail and the total amount of funds should not change.
-    fn withdrawal(&mut self, amount: Amount) -> Result<(), PaymentError> {
+    fn withdrawal(&mut self, amount: Amount) -> Result<(), TransactionError> {
         if self.locked {
-            return Err(PaymentError::ClientAccountLocked {
+            return Err(TransactionError::ClientAccountLocked {
                 client_id: self.client_id,
             });
         }
@@ -73,7 +75,7 @@ impl Account {
             self.available.0 -= amount.0;
             Ok(())
         } else {
-            Err(PaymentError::WithdrawalInsufficientFunds {
+            Err(TransactionError::WithdrawalInsufficientFunds {
                 client_id: self.client_id,
                 available: self.available,
                 requested: amount,
@@ -85,9 +87,9 @@ impl Account {
     /// The transaction shouldn't be reversed yet but the associated funds should be held. This means
     /// that the clients available funds should decrease by the amount disputed, their held funds should
     /// increase by the amount disputed, while their total funds should remain the same.
-    fn dispute(&mut self, amount: Amount) -> Result<(), PaymentError> {
+    fn dispute(&mut self, amount: Amount) -> Result<(), TransactionError> {
         if self.locked {
-            return Err(PaymentError::ClientAccountLocked {
+            return Err(TransactionError::ClientAccountLocked {
                 client_id: self.client_id,
             });
         }
@@ -103,7 +105,13 @@ impl Account {
     /// were previously disputed are no longer disputed. This means that the clients held funds should
     /// decrease by the amount no longer disputed, their available funds should increase by the amount
     /// no longer disputed, and their total funds should remain the same.
-    fn resolve(&mut self, amount: Amount) -> Result<(), PaymentError> {
+    fn resolve(&mut self, amount: Amount) -> Result<(), TransactionError> {
+        if self.locked {
+            return Err(TransactionError::ClientAccountLocked {
+                client_id: self.client_id,
+            });
+        }
+
         self.available.0 += amount.0;
         self.held.0 -= amount.0;
         Ok(())
@@ -113,8 +121,16 @@ impl Account {
     /// Funds that were held have now been withdrawn. This means that the clients held funds and total
     /// funds should decrease by the amount previously disputed. If a chargeback occurs the client's
     /// account should be immediately frozen.
-    fn chargeback(&self, amount: Amount) -> Result<(), PaymentError> {
-        todo!()
+    fn chargeback(&mut self, amount: Amount) -> Result<(), TransactionError> {
+        if self.locked {
+            return Err(TransactionError::ClientAccountLocked {
+                client_id: self.client_id,
+            });
+        }
+
+        self.held.0 -= amount.0;
+        self.locked = true;
+        Ok(())
     }
 }
 
@@ -135,7 +151,7 @@ impl Default for Ledger {
 }
 
 impl Ledger {
-    pub fn update(&mut self, transaction: Transaction) -> Result<(), PaymentError> {
+    pub fn update(&mut self, transaction: Transaction) -> Result<(), TransactionError> {
         match transaction {
             Transaction::Deposit(Deposit { client, tx, amount }) => {
                 self.clients
@@ -159,7 +175,7 @@ impl Ledger {
                 let amount = match self.deposits.get(&(client, tx)) {
                     Some(deposit) => deposit,
                     None => {
-                        return Err(PaymentError::DisputeFailed {
+                        return Err(TransactionError::DisputeFailed {
                             client_id: client,
                             transaction_id: tx,
                         })
@@ -177,18 +193,18 @@ impl Ledger {
             }
             Transaction::Resolve(Resolve { client, tx }) => {
                 // Confirm a dispute exists
-                self.disputes
-                    .get(&(client, tx))
-                    .ok_or_else(|| PaymentError::ResolveFailed {
+                self.disputes.get(&(client, tx)).ok_or_else(|| {
+                    TransactionError::ResolveFailed {
                         client_id: client,
                         transaction_id: tx,
-                    })?;
+                    }
+                })?;
 
                 // Find the transaction amount
                 let amount = match self.deposits.get(&(client, tx)) {
                     Some(deposit) => deposit,
                     None => {
-                        return Err(PaymentError::ResolveFailed {
+                        return Err(TransactionError::ResolveFailed {
                             client_id: client,
                             transaction_id: tx,
                         })
@@ -204,7 +220,35 @@ impl Ledger {
                 // Clear the dispute
                 self.disputes.remove(&(client, tx));
             }
-            Transaction::Chargeback(chargeback) => todo!(),
+            Transaction::Chargeback(Chargeback { client, tx }) => {
+                // Confirm a dispute exists
+                self.disputes.get(&(client, tx)).ok_or_else(|| {
+                    TransactionError::ChargebackFailed {
+                        client_id: client,
+                        transaction_id: tx,
+                    }
+                })?;
+
+                // Find the transaction amount
+                let amount = match self.deposits.get(&(client, tx)) {
+                    Some(deposit) => deposit,
+                    None => {
+                        return Err(TransactionError::ChargebackFailed {
+                            client_id: client,
+                            transaction_id: tx,
+                        })
+                    }
+                };
+
+                // Update the client's account
+                self.clients
+                    .entry(client)
+                    .or_insert(Account::new(client))
+                    .chargeback(*amount)?;
+
+                // Clear the dispute
+                self.disputes.remove(&(client, tx));
+            }
         }
         Ok(())
     }
@@ -326,7 +370,7 @@ mod tests {
         // Assert that the withdrawal failed
         assert_eq!(
             withdrawal_result,
-            Err(PaymentError::WithdrawalInsufficientFunds {
+            Err(TransactionError::WithdrawalInsufficientFunds {
                 client_id,
                 available: deposit_amount.clone(),
                 requested: withdrawal_amount
@@ -431,7 +475,7 @@ mod tests {
         // Assert that the dispute failed
         assert_eq!(
             dispute_result,
-            Err(PaymentError::DisputeFailed {
+            Err(TransactionError::DisputeFailed {
                 client_id: client_id,
                 transaction_id: dispute_id
             })
@@ -540,7 +584,7 @@ mod tests {
         // Assert that the resolve failed
         assert_eq!(
             resolve_result,
-            Err(PaymentError::ResolveFailed {
+            Err(TransactionError::ResolveFailed {
                 client_id: client_id,
                 transaction_id: deposit_id_2
             })
@@ -627,7 +671,7 @@ mod tests {
         // Assert that the resolve failed
         assert_eq!(
             resolve_result,
-            Err(PaymentError::ChargebackFailed {
+            Err(TransactionError::ChargebackFailed {
                 client_id: client_id,
                 transaction_id: deposit_id_2
             })
@@ -668,7 +712,7 @@ mod tests {
                 tx: TransactionId(2),
                 amount: Amount::from(3),
             })),
-            Err(PaymentError::ClientAccountLocked { client_id })
+            Err(TransactionError::ClientAccountLocked { client_id })
         );
 
         // Assert withdrawal fails
@@ -678,7 +722,7 @@ mod tests {
                 tx: TransactionId(3),
                 amount: Amount::from(3),
             })),
-            Err(PaymentError::ClientAccountLocked { client_id })
+            Err(TransactionError::ClientAccountLocked { client_id })
         );
 
         // Assert dispute fails
@@ -687,7 +731,7 @@ mod tests {
                 client: client_id,
                 tx: TransactionId(1),
             })),
-            Err(PaymentError::ClientAccountLocked { client_id })
+            Err(TransactionError::ClientAccountLocked { client_id })
         );
         assert!(ledger.disputes.is_empty());
     }
