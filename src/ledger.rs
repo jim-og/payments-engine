@@ -1,4 +1,6 @@
-use crate::types::{Amount, ClientId, Deposit, Dispute, Transaction, TransactionId, Withdrawal};
+use crate::types::{
+    Amount, ClientId, Deposit, Dispute, Resolve, Transaction, TransactionId, Withdrawal,
+};
 use std::collections::{HashMap, HashSet};
 use thiserror::Error;
 
@@ -89,8 +91,9 @@ impl Account {
                 client_id: self.client_id,
             });
         }
-        // It is assumed that a client always has a sufficient available amount for a disputed amount to
-        // be held.
+
+        // It is assumed that a client always has a sufficient available funds for the amount disputed
+        // to be held.
         self.available.0 -= amount.0;
         self.held.0 += amount.0;
         Ok(())
@@ -100,8 +103,10 @@ impl Account {
     /// were previously disputed are no longer disputed. This means that the clients held funds should
     /// decrease by the amount no longer disputed, their available funds should increase by the amount
     /// no longer disputed, and their total funds should remain the same.
-    fn resolve(&self, amount: Amount) -> Result<(), PaymentError> {
-        todo!()
+    fn resolve(&mut self, amount: Amount) -> Result<(), PaymentError> {
+        self.available.0 += amount.0;
+        self.held.0 -= amount.0;
+        Ok(())
     }
 
     /// A chargeback is the final state of a dispute and represents the client reversing a transaction.
@@ -161,7 +166,7 @@ impl Ledger {
                     }
                 };
 
-                // Update the client account funds
+                // Update the client's account
                 self.clients
                     .entry(client)
                     .or_insert(Account::new(client))
@@ -170,7 +175,35 @@ impl Ledger {
                 // Track the dispute
                 self.disputes.insert((client, tx));
             }
-            Transaction::Resolve(resolve) => todo!(),
+            Transaction::Resolve(Resolve { client, tx }) => {
+                // Confirm a dispute exists
+                self.disputes
+                    .get(&(client, tx))
+                    .ok_or_else(|| PaymentError::ResolveFailed {
+                        client_id: client,
+                        transaction_id: tx,
+                    })?;
+
+                // Find the transaction amount
+                let amount = match self.deposits.get(&(client, tx)) {
+                    Some(deposit) => deposit,
+                    None => {
+                        return Err(PaymentError::ResolveFailed {
+                            client_id: client,
+                            transaction_id: tx,
+                        })
+                    }
+                };
+
+                // Update the client's account
+                self.clients
+                    .entry(client)
+                    .or_insert(Account::new(client))
+                    .resolve(*amount)?;
+
+                // Clear the dispute
+                self.disputes.remove(&(client, tx));
+            }
             Transaction::Chargeback(chargeback) => todo!(),
         }
         Ok(())
