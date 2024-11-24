@@ -26,14 +26,13 @@ fn main() -> Result<(), Error> {
         match Transaction::try_from(transaction_entry) {
             Ok(transaction) => {
                 if let Err(e) = ledger.update(transaction) {
-                    eprintln!("{:?}", e);
+                    eprintln!("{}", e);
                 }
             }
-            Err(e) => eprintln!("{:?}", e),
+            Err(e) => eprintln!("{}", e),
         }
     }
 
-    // TODO print client accounts
-
+    ledger.print(std::io::stdout())?;
     Ok(())
 }

@@ -1,7 +1,12 @@
 use crate::types::{
-    Amount, Chargeback, ClientId, Deposit, Dispute, Resolve, Transaction, TransactionId, Withdrawal,
+    Amount, Chargeback, ClientId, Deposit, Dispute, LedgerEntry, Resolve, Transaction,
+    TransactionId, Withdrawal,
 };
-use std::collections::{HashMap, HashSet};
+use std::io::Error;
+use std::{
+    collections::{HashMap, HashSet},
+    io,
+};
 use thiserror::Error;
 
 #[derive(Error, Debug, PartialEq)]
@@ -38,6 +43,19 @@ struct Account {
     available: Amount,
     held: Amount,
     locked: bool,
+}
+
+impl From<&Account> for LedgerEntry {
+    fn from(account: &Account) -> Self {
+        const DP: u32 = 4;
+        LedgerEntry {
+            client: account.client_id,
+            available: Amount(account.available.0.round_dp(DP)),
+            held: Amount(account.held.0.round_dp(DP)),
+            total: Amount((account.available.0 + account.held.0).round_dp(DP)),
+            locked: account.locked,
+        }
+    }
 }
 
 impl Account {
@@ -154,6 +172,14 @@ impl Ledger {
             Transaction::Dispute(dispute) => self.dispute(dispute)?,
             Transaction::Resolve(resolve) => self.resolve(resolve)?,
             Transaction::Chargeback(chargeback) => self.chargeback(chargeback)?,
+        }
+        Ok(())
+    }
+
+    pub fn print(&self, output: impl io::Write) -> Result<(), Error> {
+        let mut writer = csv::Writer::from_writer(output);
+        for account in self.clients.values() {
+            writer.serialize(LedgerEntry::from(account))?;
         }
         Ok(())
     }

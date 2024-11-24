@@ -1,5 +1,5 @@
 use rust_decimal::Decimal;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 #[derive(Error, Debug, PartialEq)]
@@ -16,7 +16,7 @@ pub enum ParseError {
     ChargebackUnexpected,
 }
 
-#[derive(Debug, Deserialize, Copy, Clone, PartialEq)]
+#[derive(Debug, Deserialize, Serialize, Copy, Clone, PartialEq)]
 pub struct Amount(pub Decimal);
 
 impl From<i32> for Amount {
@@ -31,7 +31,7 @@ impl From<Decimal> for Amount {
     }
 }
 
-#[derive(Debug, Deserialize, Copy, Clone, Eq, Hash, PartialEq)]
+#[derive(Debug, Deserialize, Serialize, Copy, Clone, Eq, Hash, PartialEq)]
 pub struct ClientId(pub u16);
 
 #[derive(Debug, Deserialize, Copy, Clone, Eq, Hash, PartialEq)]
@@ -52,7 +52,7 @@ pub struct TransactionEntry {
     #[serde(alias = "type")]
     pub transaction_type: TransactionType,
     pub client: ClientId,
-    tx: TransactionId,
+    pub tx: TransactionId,
     pub amount: Option<Amount>,
 }
 
@@ -66,7 +66,6 @@ pub enum Transaction {
 }
 
 #[derive(Debug, PartialEq)]
-
 pub struct Deposit {
     pub client: ClientId,
     pub tx: TransactionId,
@@ -146,6 +145,14 @@ impl TryFrom<TransactionEntry> for Transaction {
     }
 }
 
+#[derive(Debug, Serialize)]
+pub struct LedgerEntry {
+    pub client: ClientId,
+    pub available: Amount,
+    pub held: Amount,
+    pub total: Amount,
+    pub locked: bool,
+}
 #[cfg(test)]
 mod tests {
     use super::*;
