@@ -2,7 +2,7 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-#[derive(Error, Debug, PartialEq)]
+#[derive(Error, Debug)]
 pub enum ParseError {
     #[error("deposit is missing an amount")]
     DepositMissing,
@@ -14,6 +14,8 @@ pub enum ParseError {
     ResolveUnexpected,
     #[error("chargeback contains unexpected amount")]
     ChargebackUnexpected,
+    #[error("error reading csv")]
+    Csv(#[from] csv::Error),
 }
 
 #[derive(Debug, Deserialize, Serialize, Copy, Clone, PartialEq)]
@@ -170,7 +172,7 @@ mod tests {
 
     #[test]
     fn deposit_missing_amount() {
-        assert_eq!(
+        assert!(matches!(
             Transaction::try_from(TransactionEntry {
                 transaction_type: TransactionType::Deposit,
                 client: ClientId(1),
@@ -178,7 +180,7 @@ mod tests {
                 amount: None,
             }),
             Err(ParseError::DepositMissing)
-        );
+        ));
     }
 
     #[test]
@@ -194,7 +196,7 @@ mod tests {
 
     #[test]
     fn withdrawal_missing_amount() {
-        assert_eq!(
+        assert!(matches!(
             Transaction::try_from(TransactionEntry {
                 transaction_type: TransactionType::Withdrawal,
                 client: ClientId(1),
@@ -202,7 +204,7 @@ mod tests {
                 amount: None,
             }),
             Err(ParseError::WithdrawalMissing)
-        );
+        ));
     }
 
     #[test]
@@ -218,7 +220,7 @@ mod tests {
 
     #[test]
     fn dispute_unexpected_amount() {
-        assert_eq!(
+        assert!(matches!(
             Transaction::try_from(TransactionEntry {
                 transaction_type: TransactionType::Dispute,
                 client: ClientId(1),
@@ -226,7 +228,7 @@ mod tests {
                 amount: Some(Amount::from(1)),
             }),
             Err(ParseError::DisputeUnexpected)
-        );
+        ));
     }
 
     #[test]
@@ -242,7 +244,7 @@ mod tests {
 
     #[test]
     fn resolve_unexpected_amount() {
-        assert_eq!(
+        assert!(matches!(
             Transaction::try_from(TransactionEntry {
                 transaction_type: TransactionType::Resolve,
                 client: ClientId(1),
@@ -250,7 +252,7 @@ mod tests {
                 amount: Some(Amount::from(1)),
             }),
             Err(ParseError::ResolveUnexpected)
-        );
+        ));
     }
 
     #[test]
@@ -266,7 +268,7 @@ mod tests {
 
     #[test]
     fn chargeback_unexpected_amount() {
-        assert_eq!(
+        assert!(matches!(
             Transaction::try_from(TransactionEntry {
                 transaction_type: TransactionType::Chargeback,
                 client: ClientId(1),
@@ -274,6 +276,6 @@ mod tests {
                 amount: Some(Amount::from(1)),
             }),
             Err(ParseError::ChargebackUnexpected)
-        );
+        ));
     }
 }

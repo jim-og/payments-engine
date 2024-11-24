@@ -2,6 +2,7 @@ use crate::types::{
     Amount, Chargeback, ClientId, Deposit, Dispute, LedgerEntry, Resolve, Transaction,
     TransactionId, Withdrawal,
 };
+use crate::utils;
 use std::io::Error;
 use std::{
     collections::{HashMap, HashSet},
@@ -38,11 +39,11 @@ pub enum TransactionError {
     ClientAccountLocked { client_id: ClientId },
 }
 
-struct Account {
-    client_id: ClientId,
-    available: Amount,
-    held: Amount,
-    locked: bool,
+pub struct Account {
+    pub client_id: ClientId,
+    pub available: Amount,
+    pub held: Amount,
+    pub locked: bool,
 }
 
 impl From<&Account> for LedgerEntry {
@@ -176,11 +177,13 @@ impl Ledger {
         Ok(())
     }
 
-    pub fn print(&self, output: impl io::Write) -> Result<(), Error> {
-        let mut writer = csv::Writer::from_writer(output);
-        for account in self.clients.values() {
-            writer.serialize(LedgerEntry::from(account))?;
-        }
+    pub fn print(&self, wrt: impl io::Write) -> Result<(), Error> {
+        utils::write_output(
+            wrt,
+            self.clients
+                .values()
+                .map(|account| LedgerEntry::from(account)),
+        )?;
         Ok(())
     }
 

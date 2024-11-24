@@ -1,10 +1,12 @@
 use ledger::Ledger;
 use std::env;
+use std::fs::File;
 use std::io::{Error, ErrorKind};
-use types::{Transaction, TransactionEntry};
+use utils::read_input;
 
 mod ledger;
 mod types;
+mod utils;
 
 fn main() -> Result<(), Error> {
     let args: Vec<String> = env::args().collect();
@@ -15,15 +17,12 @@ fn main() -> Result<(), Error> {
         ));
     }
 
+    // Create the ledger which will track client transactions
     let mut ledger = Ledger::default();
 
-    let mut reader = csv::ReaderBuilder::new()
-        .trim(csv::Trim::All)
-        .from_path(args[1].clone())?;
-
-    for entry in reader.deserialize() {
-        let transaction_entry: TransactionEntry = entry?;
-        match Transaction::try_from(transaction_entry) {
+    let input_file = File::open(args[1].clone())?;
+    for entry in read_input(input_file) {
+        match entry {
             Ok(transaction) => {
                 if let Err(e) = ledger.update(transaction) {
                     eprintln!("{}", e);
