@@ -1,10 +1,11 @@
 use crate::types::{LedgerEntry, ParseError, Transaction, TransactionEntry};
 use std::io;
 
-/// TODO
+/// Reads and parses data from a CSV input, returning an iterator of `Transaction` results.
+/// This allows streaming of CSV data without loading the entire file into memory.
 pub fn read_input(rdr: impl io::Read) -> impl Iterator<Item = Result<Transaction, ParseError>> {
     let reader = csv::ReaderBuilder::new()
-        .trim(csv::Trim::All) // Automatically trim whitespace
+        .trim(csv::Trim::All)
         .from_reader(rdr);
     reader.into_deserialize::<TransactionEntry>().map(|entry| {
         // Map potential csv::Error then convert into a Transaction
@@ -13,7 +14,7 @@ pub fn read_input(rdr: impl io::Read) -> impl Iterator<Item = Result<Transaction
     })
 }
 
-/// TODO
+/// Write a sequence of `LedgerEntry` records to a CSV output.
 pub fn write_output(
     wtr: impl io::Write,
     iter: impl Iterator<Item = LedgerEntry>,

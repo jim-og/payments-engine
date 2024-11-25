@@ -2,7 +2,7 @@ use crate::types::{
     Amount, Chargeback, ClientId, Deposit, Dispute, LedgerEntry, Resolve, Transaction,
     TransactionId, Withdrawal,
 };
-use crate::utils;
+use crate::utils::{self, read_input};
 use std::io::Error;
 use std::{
     collections::{HashMap, HashSet},
@@ -39,24 +39,12 @@ pub enum TransactionError {
     ClientAccountLocked { client_id: ClientId },
 }
 
+/// Represents a client's account in the ledger, including funds and whether the account is locked.
 pub struct Account {
     pub client_id: ClientId,
     pub available: Amount,
     pub held: Amount,
     pub locked: bool,
-}
-
-impl From<&Account> for LedgerEntry {
-    fn from(account: &Account) -> Self {
-        const DP: u32 = 4;
-        LedgerEntry {
-            client: account.client_id,
-            available: Amount(account.available.0.round_dp(DP)),
-            held: Amount(account.held.0.round_dp(DP)),
-            total: Amount((account.available.0 + account.held.0).round_dp(DP)),
-            locked: account.locked,
-        }
-    }
 }
 
 impl Account {
@@ -165,7 +153,7 @@ pub struct Ledger {
 }
 
 impl Ledger {
-    /// Update the ledger
+    /// Updates the ledger by applying a `Transaction`.
     pub fn update(&mut self, transaction: Transaction) -> Result<(), TransactionError> {
         match transaction {
             Transaction::Deposit(deposit) => self.deposit(deposit)?,
@@ -177,13 +165,23 @@ impl Ledger {
         Ok(())
     }
 
+    /// Load transactions in CSV format from a given reader and update the ledger.
+    pub fn load(&mut self, rdr: impl io::Read) {
+        for entry in read_input(rdr) {
+            match entry {
+                Ok(transaction) => {
+                    if let Err(e) = self.update(transaction) {
+                        eprintln!("{}", e);
+                    }
+                }
+                Err(e) => eprintln!("{}", e),
+            }
+        }
+    }
+
+    /// Print the client accounts to a given writer in CSV format.
     pub fn print(&self, wrt: impl io::Write) -> Result<(), Error> {
-        utils::write_output(
-            wrt,
-            self.clients
-                .values()
-                .map(|account| LedgerEntry::from(account)),
-        )?;
+        utils::write_output(wrt, self.clients.values().map(LedgerEntry::from))?;
         Ok(())
     }
 

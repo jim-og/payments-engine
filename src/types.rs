@@ -1,3 +1,4 @@
+use crate::ledger::Account;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -155,6 +156,20 @@ pub struct LedgerEntry {
     pub total: Amount,
     pub locked: bool,
 }
+
+impl From<&Account> for LedgerEntry {
+    fn from(account: &Account) -> Self {
+        const DP: u32 = 4;
+        LedgerEntry {
+            client: account.client_id,
+            available: Amount(account.available.0.round_dp(DP)),
+            held: Amount(account.held.0.round_dp(DP)),
+            total: Amount((account.available.0 + account.held.0).round_dp(DP)),
+            locked: account.locked,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

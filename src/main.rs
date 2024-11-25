@@ -2,13 +2,13 @@ use ledger::Ledger;
 use std::env;
 use std::fs::File;
 use std::io::{Error, ErrorKind};
-use utils::read_input;
 
 mod ledger;
 mod types;
 mod utils;
 
 fn main() -> Result<(), Error> {
+    // Ensure there is a single command line argument specifying the input file.
     let args: Vec<String> = env::args().collect();
     if args.len() != 2 {
         return Err(Error::new(
@@ -17,21 +17,16 @@ fn main() -> Result<(), Error> {
         ));
     }
 
-    // Create the ledger which will track client transactions
+    // Attempt to open the specified file.
+    let input_file = File::open(args[1].clone())?;
+
+    // Create a ledger to track client transactions.
     let mut ledger = Ledger::default();
 
-    let input_file = File::open(args[1].clone())?;
-    for entry in read_input(input_file) {
-        match entry {
-            Ok(transaction) => {
-                if let Err(e) = ledger.update(transaction) {
-                    eprintln!("{}", e);
-                }
-            }
-            Err(e) => eprintln!("{}", e),
-        }
-    }
+    // Load transactions into the ledger.
+    ledger.load(input_file);
 
+    // Print client accounts to stdout.
     ledger.print(std::io::stdout())?;
     Ok(())
 }
