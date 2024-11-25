@@ -166,7 +166,7 @@ pub struct Ledger {
 
 impl Ledger {
     /// Updates the ledger by applying a `Transaction`.
-    pub fn update(&mut self, transaction: Transaction) -> Result<(), TransactionError> {
+    fn update(&mut self, transaction: Transaction) -> Result<(), TransactionError> {
         match transaction {
             Transaction::Deposit(deposit) => self.deposit(deposit)?,
             Transaction::Withdrawal(withdrawal) => self.withdrawal(withdrawal)?,
