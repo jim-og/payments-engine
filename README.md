@@ -16,7 +16,8 @@ $ cargo test
 - Only `deposit` transactions can be disputed.
 - Once a client's account is locked all subsequent transactions performed on it will fail.
 - If a client does not exist only a `deposit` transaction can create it.
-- Malformed input lines, such as a `dispute` transaction which contains an amount, will be rejected.  
+- Malformed input lines, such as a `dispute` transaction which contains an amount, will be rejected.
+- Disputes are only made for `deposit` transactions which the client has sufficient available funds to be held.
 
 ## Design
 
@@ -28,7 +29,7 @@ Responsible for reading from an input and writing to an output in CSV format.
 
 ### ledger.rs
 Responsible for maintaining a ledger of client accounts and the state of transaction disputes. The following data stores are maintained: 
-- *clients* - holds each client’s account information of available funds,held funds, and locked status.
+- *clients* - holds each client’s account information of available funds, held funds, and locked status.
 - *deposits* - tracks all the deposit transactions which have been made for all clients. This allows O(1) lookup time of a deposit in the event a transaction is disputed.
 - *disputes* - tracks any active disputes. 
 
@@ -47,3 +48,5 @@ Used to specify types used by both parser and ledger.
 - Storing deposits from every client in a single data store may be suboptimal. An example could be if we wanted to add a feature which printed all historic deposits made by a client. Our current setup would require us to iterate through every transaction processed by the ledger which would be very inefficient. A better solution would be for each client to have their own deposit data store.
 
 - There should be a more robust set of integration tests with a large input CSV representating the amount of transactions the engine is expected to process.
+
+- The assumption has been made that disputes are only made for deposit transactions which the client has sufficient available funds to be held. In reality this is a poor assumption. Bad actors could deposit funds, immediately withdraw them, then dispute their original deposit transactions. Better handling of insufficient funds and guards around negative balance should be implemented.
