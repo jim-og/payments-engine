@@ -4,8 +4,8 @@ use std::fs::File;
 use std::io::{Error, ErrorKind};
 
 mod ledger;
+mod parser;
 mod types;
-mod utils;
 
 fn main() -> Result<(), Error> {
     // Ensure there is a single command line argument specifying the input file.

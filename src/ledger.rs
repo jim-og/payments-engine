@@ -1,8 +1,7 @@
+use crate::parser::{self, read_input, LedgerEntry};
 use crate::types::{
-    Amount, Chargeback, ClientId, Deposit, Dispute, LedgerEntry, Resolve, Transaction,
-    TransactionId, Withdrawal,
+    Amount, Chargeback, ClientId, Deposit, Dispute, Resolve, Transaction, TransactionId, Withdrawal,
 };
-use crate::utils::{self, read_input};
 use std::io::Error;
 use std::{
     collections::{HashMap, HashSet},
@@ -45,6 +44,19 @@ pub struct Account {
     pub available: Amount,
     pub held: Amount,
     pub locked: bool,
+}
+
+impl From<&Account> for LedgerEntry {
+    fn from(account: &Account) -> Self {
+        const DP: u32 = 4;
+        LedgerEntry {
+            client: account.client_id,
+            available: Amount(account.available.0.round_dp(DP)),
+            held: Amount(account.held.0.round_dp(DP)),
+            total: Amount((account.available.0 + account.held.0).round_dp(DP)),
+            locked: account.locked,
+        }
+    }
 }
 
 impl Account {
@@ -181,7 +193,7 @@ impl Ledger {
 
     /// Print the client accounts to a given writer in CSV format.
     pub fn print(&self, wrt: impl io::Write) -> Result<(), Error> {
-        utils::write_output(wrt, self.clients.values().map(LedgerEntry::from))?;
+        parser::write_output(wrt, self.clients.values().map(LedgerEntry::from))?;
         Ok(())
     }
 
