@@ -44,8 +44,6 @@ Used to specify types used by both parser and ledger.
     - `Mutex` the ledger's data stores to ensure shared mutable state is thread safe.
     - Modify the ledger's update methods to be `async` and have load `await` the responses.
 
-- The choice to store all deposits in a separate datastore has simplified insertion and retrieval of past deposits, ensuring that disputes and resolves can be executed in O(1) time. However, storing these separate to the client’s account alongside deposits made by other clients may be suboptimal for other use cases. An example would be if we wanted to print the historic deposits made by a specific client. The current set up would require iterating through every deposit in the ledger to collect deposits made by this client.
-
 - Storing deposits from every client in a single data store may be suboptimal. An example could be if we wanted to add a feature which printed all historic deposits made by a client. Our current setup would require us to iterate through every transaction processed by the ledger which would be very inefficient. A better solution would be for each client to have their own deposit data store.
 
 - There should be a more robust set of integration tests with a large input CSV representating the amount of transactions the engine is expected to process.
